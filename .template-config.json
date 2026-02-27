@@ -1,0 +1,11 @@
+{
+  "template_version": "1.0.0",
+  "marketplace_name": "ben-dev",
+  "owner_name": "bgaudiosi",
+  "github_repo": "bgaudiosi/claude-marketplace",
+  "color_scheme": {
+    "primary": "#dc143c",
+    "primary_dark": "#a0102a",
+    "secondary": "#ff6b7a"
+  }
+}

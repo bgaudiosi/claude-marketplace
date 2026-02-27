@@ -1,0 +1,13 @@
+{
+  "name": "ben-dev",
+  "owner": {
+    "name": "bgaudiosi"
+  },
+  "plugins": [
+    {
+      "name": "example-plugin",
+      "source": "./plugins/example-plugin",
+      "description": "Example plugin demonstrating command structure"
+    }
+  ]
+}
