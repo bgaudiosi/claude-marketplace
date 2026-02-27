@@ -1,0 +1,8 @@
+{
+  "name": "code-reviewer-profiles",
+  "description": "Learn and apply code review styles from GitHub history",
+  "version": "0.1.0",
+  "author": {
+    "name": "bgaudiosi"
+  }
+}

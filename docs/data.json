@@ -38,6 +38,28 @@
       ],
       "has_readme": true,
       "has_mcp": true
+    },
+    {
+      "name": "code-reviewer-profiles",
+      "description": "Learn and apply code review styles from GitHub history",
+      "version": "0.1.0",
+      "commands": [],
+      "skills": [
+        {
+          "name": "build-code-reviewer-profile",
+          "id": "build-code-reviewer-profile",
+          "description": "Fetch any GitHub user's review history and generate a code reviewer profile"
+        },
+        {
+          "name": "review-as-ben",
+          "id": "review-as-ben",
+          "description": "Review code changes using Ben Gaudiosi's learned review style"
+        }
+      ],
+      "hooks": [],
+      "agents": [],
+      "has_readme": true,
+      "has_mcp": false
     }
   ]
 }
