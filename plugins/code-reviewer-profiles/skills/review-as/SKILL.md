@@ -1,72 +1,90 @@
 ---
-name: review-as-ben
-description: Review code changes using Ben Gaudiosi's learned review style
-version: 0.1.0
-tags: [github, code-review, automation, ben-gaudiosi]
+name: review-as
+description: Review code changes using a reviewer's learned style from their GitHub history
+version: 0.2.0
+tags: [github, code-review, automation, reviewer-profile]
 ---
 
-# Review As Ben
+# Review As
 
-Reviews your code changes using Ben Gaudiosi's learned review style from his GitHub history. Provides inline comments and overall feedback matching Ben's patterns, tone, and technical preferences.
+Reviews your code changes using a reviewer's learned style from their GitHub history. Provides inline comments and overall feedback matching their patterns, tone, and technical preferences.
 
 ## When to Use This Skill
 
 Use this skill when:
 - You want to self-review code before creating a PR
-- You want feedback in Ben's review style
-- You're curious how Ben might review your changes
-- You want to catch issues Ben typically flags
+- You want feedback in a specific reviewer's style
+- You're curious how a teammate might review your changes
+- You want to catch issues a reviewer typically flags
 
 **Best used for**:
 - Pre-PR self-review
-- Learning Ben's review patterns
-- Ensuring consistency with Ben's expectations
+- Learning a reviewer's patterns
+- Ensuring consistency with a reviewer's expectations
 - Catching common issues early
+
+## Required Argument
+
+`<username>` — the reviewer whose profile to load (e.g., `/review-as octocat`)
 
 ## Prerequisites
 
 ### Required
 
-1. **Ben's Reviewer Profile** - Must exist at one of:
-   - `/tmp/code-reviewer-profiles/profiles/bengaudiosi-toast.json` (default)
-   - Custom location (you'll be prompted if not found in default)
+1. **Reviewer Profile** — Must exist at one of (checked in order):
+   - `~/.claude/reviewer-profiles/profiles/<username>.json`
+   - `/tmp/code-reviewer-profiles/profiles/<username>.json`
+   - Custom location via `--profile <path>`
 
-   If not found, run `/build-ben-profile` first.
+   If not found, run `/build-code-reviewer-profile --user=<username>` first.
 
-2. **Git Repository** - Must be in a git repository with:
+2. **Git Repository** — Must be in a git repository with:
    - Committed changes on a feature branch, OR
    - Uncommitted changes to review
 
-3. **Base Branch** - Usually `main` or `master` (auto-detected)
+3. **Base Branch** — Usually `main` or `master` (auto-detected)
 
 ### Optional Arguments
 
-- `[branch-name]` - Branch to review (default: current branch vs main)
-- `--files <paths>` - Review only specific files
-- `--context <lines>` - Lines of context in diff (default: 3)
-- `--profile <path>` - Use profile from custom location
+- `[branch-name]` — Branch to review (default: current branch vs main)
+- `--files <paths>` — Review only specific files
+- `--context <lines>` — Lines of context in diff (default: 3)
+- `--profile <path>` — Use profile from custom location
 
 ## Implementation Steps
 
+### Step 0: Parse Username
+
+1. **Extract `<username>`** from the first argument (e.g., `/review-as octocat` → `octocat`)
+2. If no username provided, prompt:
+   ```
+   Which reviewer's style would you like to use?
+
+   Enter GitHub username: _
+   ```
+
 ### Step 1: Locate Reviewer Profile
 
-1. **Check default location**:
-   ```bash
-   ls /tmp/code-reviewer-profiles/profiles/bengaudiosi-toast.json
-   ```
+1. **Search for profile** in order:
+   - `~/.claude/reviewer-profiles/profiles/<username>.json`
+   - `/tmp/code-reviewer-profiles/profiles/<username>.json`
+   - If `--profile` flag provided, use that path instead
 
 2. **If not found**, prompt user:
    ```
-   Ben's reviewer profile not found at default location.
+   ❌ Reviewer profile for '<username>' not found.
+
+   Searched:
+   - ~/.claude/reviewer-profiles/profiles/<username>.json
+   - /tmp/code-reviewer-profiles/profiles/<username>.json
 
    Options:
-   1. Run /build-ben-profile to create it
-   2. Specify custom profile location
-
-   Enter path to profile or 'q' to quit:
+   1. Run /build-code-reviewer-profile --user=<username> to create it
+   2. Specify custom profile location with --profile <path>
    ```
 
 3. **Load profile JSON** and extract key sections:
+   - `display_name` (used throughout output instead of username)
    - `review_style.summary`
    - `review_style.key_traits`
    - `review_style.tone`
@@ -77,7 +95,7 @@ Use this skill when:
 
 4. **Verify profile freshness**:
    - Check `generated_at` timestamp
-   - If older than 30 days, warn: "Profile is {age} old. Consider running /build-ben-profile to refresh."
+   - If older than 30 days, warn: "Profile is {age} old. Consider running /build-code-reviewer-profile --user=<username> to refresh."
 
 ### Step 2: Get Code Changes
 
@@ -151,13 +169,13 @@ index abc123..def456 100644
 
 #### Filter by File Type
 
-Use Ben's profile to prioritize:
+Use the reviewer's profile to prioritize:
 - Check `statistics.most_commented_file_types`
-- For file types Ben rarely comments on (e.g., `.json`, `.xml`), provide lighter review
+- For file types they rarely comment on (e.g., `.json`, `.xml`), provide lighter review
 
 ### Step 4: Generate Review Comments
 
-For each file/chunk, generate review using Ben's profile as context.
+For each file/chunk, generate review using the reviewer's profile as context.
 
 #### Construct AI Prompt
 
@@ -165,7 +183,7 @@ Include in the prompt:
 
 1. **Profile Context** (~2k tokens):
    ```
-   You are reviewing code as Ben Gaudiosi. Use his review style:
+   You are reviewing code as {display_name}. Use their review style:
 
    **Review Style**: {profile.review_style.summary}
 
@@ -199,11 +217,11 @@ Include in the prompt:
 
 3. **Instructions**:
    ```
-   Provide a code review in Ben's style:
-   - Use his typical phrases and tone
-   - Focus on his priority areas (documentation, code structure, etc.)
-   - Flag anti-patterns he commonly catches
-   - Structure suggestions as he would (with examples, explanations, questions)
+   Provide a code review in {display_name}'s style:
+   - Use their typical phrases and tone
+   - Focus on their priority areas
+   - Flag anti-patterns they commonly catch
+   - Structure suggestions as they would (with examples, explanations, questions)
    - Reference specific line numbers from the diff
 
    Output format:
@@ -211,7 +229,7 @@ Include in the prompt:
      "inline_comments": [
        {
          "line": <line_number>,
-         "comment": "<review comment in Ben's style>"
+         "comment": "<review comment in their style>"
        }
      ],
      "overall_feedback": "<high-level observations>"
@@ -227,7 +245,7 @@ Extract inline comments and overall feedback from JSON response.
 Display the review in a readable format:
 
 ```markdown
-## Code Review (as Ben Gaudiosi)
+## Code Review (as {display_name})
 
 **Branch**: feature/my-feature
 **Base**: main
@@ -248,37 +266,15 @@ return repository.findById(id).orElseThrow {
 **Line 65**: This method is getting large - consider extraction
 Have you thought about breaking this into smaller, focused methods? For example, the validation logic could be its own method.
 
-**Line 89**: Missing javadoc
-This is a public API method - add documentation explaining:
-- What it does
-- What parameters mean
-- What it returns
-- What exceptions it throws
-
----
-
-### services/ConfigRepository.kt
-
-**Line 23**: Hardcoded configuration value
-This should be externalized to a config file or environment variable. See how we handle database timeouts in `DatabaseConfig.kt`.
-
 ---
 
 ### Overall Feedback
 
-Overall, this looks like a solid implementation. The main areas to focus on:
-
-1. **Documentation**: Several public methods are missing javadocs. This will make it harder for other developers to understand the API.
-
-2. **Error Handling**: Consider how you're handling edge cases, particularly around null values and exceptions.
-
-3. **Code Structure**: A few methods are getting long - extracting smaller methods would improve readability.
-
-The core logic is sound, and I like how you're using the repository pattern. Just clean up the rough edges above and this will be good to merge.
+[High-level observations in the reviewer's style]
 
 ---
 
-**Profile source**: bengaudiosi-toast.json (150 PRs analyzed, generated 2026-02-27)
+**Profile source**: <username>.json ({total_prs} PRs analyzed, generated {date})
 ```
 
 ### Step 6: Display Review Statistics
@@ -290,9 +286,9 @@ After showing the review, display summary stats:
    - Files reviewed: 5
    - Inline comments: 12
    - Focus areas covered: Documentation (4), Code Structure (3), Error Handling (3), Style (2)
-   - Review generated using profile from 150 PRs
+   - Review generated using profile from {total_prs} PRs
 
-💡 Tip: Address these comments before creating your PR to align with Ben's expectations.
+💡 Tip: Address these comments before creating your PR to align with {display_name}'s expectations.
 ```
 
 ---
@@ -331,7 +327,7 @@ If total diff exceeds 2000 lines:
 ### Skipping Files
 
 Skip files that:
-- Are not typically reviewed by Ben (check profile stats)
+- Are not typically reviewed by this reviewer (check profile stats)
 - Are auto-generated (build outputs, lock files)
 - Have no substantive changes (whitespace only)
 
@@ -345,10 +341,10 @@ Show: "Skipped 3 files: package-lock.json (auto-generated), ConfigTest.kt.orig (
 
 If profile doesn't exist:
 ```
-❌ Ben's reviewer profile not found.
+❌ Reviewer profile for '<username>' not found.
 
-Run `/build-ben-profile` first to generate the profile, or specify a custom location with:
-   /review-as-ben --profile <path-to-profile>
+Run `/build-code-reviewer-profile --user=<username>` first to generate the profile, or specify a custom location with:
+   /review-as <username> --profile <path-to-profile>
 ```
 
 ### No Git Repository
@@ -394,30 +390,30 @@ If AI fails to generate review:
 ### Basic Usage
 
 ```bash
-# Review current branch against main
-/review-as-ben
+# Review current branch against main as a specific reviewer
+/review-as octocat
 
 # Review specific branch
-/review-as-ben feature/my-feature
+/review-as octocat feature/my-feature
 
 # Review against different base
-/review-as-ben feature/my-feature --base develop
+/review-as octocat feature/my-feature --base develop
 ```
 
 ### Advanced Options
 
 ```bash
 # Review only specific files
-/review-as-ben --files src/services/ConfigService.kt src/repository/ConfigRepo.kt
+/review-as octocat --files src/services/ConfigService.kt src/repository/ConfigRepo.kt
 
 # Use custom profile location
-/review-as-ben --profile ~/.claude/reviewer-profiles/profiles/bengaudiosi-toast.json
+/review-as octocat --profile ~/.claude/reviewer-profiles/profiles/octocat.json
 
 # Increase diff context
-/review-as-ben --context 5
+/review-as octocat --context 5
 
 # Review uncommitted changes
-/review-as-ben --uncommitted
+/review-as octocat --uncommitted
 ```
 
 ---
@@ -430,19 +426,19 @@ If AI fails to generate review:
 # User has changes on feature branch
 git checkout feature/add-config-caching
 
-# Run review
-/review-as-ben
+# Run review as a specific reviewer
+/review-as octocat
 
 # Output:
-> Loading Ben's reviewer profile...
+> Loading octocat's reviewer profile...
 > ✅ Profile loaded (150 PRs analyzed)
 >
 > Analyzing changes on feature/add-config-caching vs main...
 > Found 3 files with changes (428 lines)
 >
-> Generating review in Ben's style...
+> Generating review in The Octocat's style...
 >
-> ## Code Review (as Ben Gaudiosi)
+> ## Code Review (as The Octocat)
 >
 > ### services/ConfigService.kt
 >
@@ -451,58 +447,23 @@ git checkout feature/add-config-caching
 > [... rest of review ...]
 ```
 
-### Example 2: Large Diff
+### Example 2: Profile Not Found
 
 ```bash
-/review-as-ben feature/major-refactor
+/review-as jsmith
 
 # Output:
-> Loading Ben's reviewer profile...
-> ✅ Profile loaded (150 PRs analyzed)
+> ❌ Reviewer profile for 'jsmith' not found.
 >
-> Analyzing changes on feature/major-refactor vs main...
-> Found 15 files with changes (3,247 lines)
->
-> ⚠️  Large diff detected - reviewing file-by-file
->
-> Reviewing file 1/15: ConfigService.kt (287 lines)...
-> Reviewing file 2/15: ConfigRepository.kt (198 lines)...
-> [... progress updates ...]
->
-> ## Code Review (as Ben Gaudiosi)
-> [... combined review ...]
-```
-
-### Example 3: Specific Files
-
-```bash
-/review-as-ben --files src/services/ConfigService.kt
-
-# Output:
-> Loading Ben's reviewer profile...
-> ✅ Profile loaded (150 PRs analyzed)
->
-> Reviewing specific file: src/services/ConfigService.kt
->
-> ## Code Review (as Ben Gaudiosi)
->
-> ### services/ConfigService.kt
-> [... focused review ...]
-```
-
-### Example 4: Profile Not Found
-
-```bash
-/review-as-ben
-
-# Output:
-> ❌ Ben's reviewer profile not found at /tmp/code-reviewer-profiles/
+> Searched:
+> - ~/.claude/reviewer-profiles/profiles/jsmith.json
+> - /tmp/code-reviewer-profiles/profiles/jsmith.json
 >
 > Options:
-> 1. Run /build-ben-profile to create it
-> 2. Specify custom location: /review-as-ben --profile <path>
+> 1. Run /build-code-reviewer-profile --user=jsmith to create it
+> 2. Specify custom location: /review-as jsmith --profile <path>
 >
-> Would you like me to run /build-ben-profile now? (y/n)
+> Would you like me to run /build-code-reviewer-profile --user=jsmith now? (y/n)
 ```
 
 ---
@@ -511,42 +472,34 @@ git checkout feature/add-config-caching
 
 ### Recommended Usage Pattern
 
-1. **One-time setup**: Run `/build-ben-profile`
+1. **One-time setup**: Run `/build-code-reviewer-profile --user=<username>`
 2. **Before every PR**:
    ```bash
    git checkout -b feature/my-feature
    # ... make changes ...
    git add .
    git commit -m "Implement feature"
-   /review-as-ben
+   /review-as <username>
    # ... address feedback ...
    git add .
    git commit -m "Address review feedback"
    gh pr create --draft
    ```
 
-3. **Periodic refresh**: Run `/build-ben-profile` monthly to keep profile current
-
-### Git Hooks Integration (Future)
-
-Could be automated with a pre-push hook:
-```bash
-# .git/hooks/pre-push
-/review-as-ben --uncommitted --quiet
-```
+3. **Periodic refresh**: Run `/build-code-reviewer-profile --user=<username>` monthly to keep profile current
 
 ---
 
 ## Success Criteria
 
 The skill is successful when:
-- ✅ Ben's profile is loaded correctly
+- ✅ Reviewer profile is loaded correctly from username lookup
 - ✅ Code changes are fetched via git diff
-- ✅ Review comments match Ben's style and tone
-- ✅ Focus areas align with Ben's priorities
+- ✅ Review comments match the reviewer's style and tone
+- ✅ Focus areas align with the reviewer's priorities
 - ✅ Technical preferences are applied correctly
 - ✅ Output is formatted clearly with line references
-- ✅ Overall feedback captures Ben's typical approach
+- ✅ Overall feedback captures the reviewer's typical approach
 - ✅ Token usage stays within ~10k per file
 - ✅ Large diffs are handled gracefully
 
@@ -556,7 +509,6 @@ The skill is successful when:
 
 - **Token Efficiency**: Uses ~10k tokens per review (affordable for frequent use)
 - **Profile Freshness**: Warns if profile is >30 days old
-- **File Filtering**: Skips files Ben rarely reviews (auto-generated, etc.)
+- **File Filtering**: Skips files the reviewer rarely reviews (auto-generated, etc.)
 - **Graceful Degradation**: Falls back to simpler review if full analysis fails
-- **Future Enhancement**: Could support `--compare` to show how your code evolved based on review feedback
 - **Not a Replacement**: This is for self-review - still get human review before merging!

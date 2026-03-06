@@ -179,14 +179,14 @@ gh search prs \
   --reviewed-by=<username> \
   --merged \
   --limit <limit> \
-  --json number,title,repository,mergedAt,url \
+  --json number,title,repository,closedAt,url \
   --hostname <github-host>
 ```
 
 **Note**: For public GitHub (github.com), the `--hostname` parameter can be omitted.
 
 **Pagination strategy** (if you need more than 100 PRs):
-- After fetching the first batch, note the oldest `mergedAt` date
+- After fetching the first batch, note the oldest `closedAt` date
 - Fetch next batch with: `--merged-at "<{oldest_date}"`
 - Continue until you have ~150 PRs or reach desired limit
 
@@ -205,6 +205,8 @@ For each PR in the search results:
    ```
 
    **Note**: For public GitHub (github.com), the `--hostname` parameter can be omitted.
+
+   **Note**: `gh api --paginate` may return multiple concatenated JSON arrays (not a single array). You must handle this by merging/parsing the output — e.g., pipe through `jq -s 'add'` or concatenate arrays manually after fetching.
 
    Key fields to capture:
    - `id`: Comment ID
@@ -233,7 +235,9 @@ For each PR in the search results:
    - `submitted_at`: Timestamp
    - `user.login`: Reviewer
 
-   **Filter**: Only keep reviews where `user.login === "bgaudiosi"`
+   **Filter**: Only keep reviews where `user.login === "<username>"`
+
+   **Note**: Many review-level comments (especially APPROVED and COMMENTED states) have empty `body` text. Filter these out when counting "comments analyzed" — only count reviews with non-empty body text as meaningful comments.
 
 3. **Save to cache file**:
    ```
@@ -272,7 +276,7 @@ After fetching all PRs, create an index for efficient lookup:
       "repository": "owner/repository-name",
       "file": "pr-service-2598.json",
       "comment_count": 11,
-      "merged_at": "2026-02-27T10:30:00Z"
+      "closed_at": "2026-02-27T10:30:00Z"
     }
   ]
 }
@@ -289,9 +293,9 @@ Save to: `<storage-dir>/cache/reviews/<username>/index.json`
 
 ---
 
-### Phase 2: Analyze and Build Profile (AI-Powered)
+### Phase 2: Analyze and Build Profile
 
-This phase analyzes the cached data using AI in batches for token efficiency.
+This phase analyzes the cached data directly. Read cached PR files in batches to manage context window usage.
 
 #### Step 2.1: Load Cached Data
 
@@ -311,7 +315,7 @@ Read the index file to get the list of cached PRs:
 **Process**:
 1. Load PRs in batches of 15
 2. For each batch, extract all inline and review comments
-3. Send to AI with prompt:
+3. Analyze with the following categorization:
 
    ```
    Analyze these code review comments and categorize each by theme:
@@ -336,10 +340,7 @@ Read the index file to get the list of cached PRs:
 4. Aggregate results across all batches
 5. Count frequency of each theme
 
-**Token estimate**: 15 PRs × ~850 tokens/PR = ~12,750 input tokens per batch
-- Total batches: 150 PRs ÷ 15 = 10 batches
-- Total input: ~127k tokens
-- Total output: ~8k tokens (aggregated theme data)
+**Batching guide**: ~15 PRs per batch keeps context manageable. Adjust based on comment density.
 
 #### Step 2.3: Analyze Review Style (Single Batch)
 
@@ -347,7 +348,7 @@ Read the index file to get the list of cached PRs:
 
 **Process**:
 1. Select a representative sample of 30 comments across different themes
-2. Send to AI with prompt:
+2. Analyze with the following prompt:
 
    ```
    Analyze this reviewer's style based on these sample comments:
@@ -366,8 +367,6 @@ Read the index file to get the list of cached PRs:
 
 3. Parse and store the style analysis
 
-**Token estimate**: ~10k tokens total (input + output)
-
 #### Step 2.4: Extract Technical Preferences (Batch Processing)
 
 **Goal**: Identify language-specific patterns, framework preferences, and anti-patterns
@@ -375,7 +374,7 @@ Read the index file to get the list of cached PRs:
 **Process**:
 1. Group comments by file extension (.kt, .java, .md, etc.)
 2. Sample 30 representative PRs across different repos and file types
-3. For each file type, send batch to AI:
+3. For each file type, analyze with:
 
    ```
    Analyze these code review comments for {file_type} files.
@@ -389,10 +388,6 @@ Read the index file to get the list of cached PRs:
    ```
 
 4. Aggregate across all file types
-
-**Token estimate**: ~10k tokens per batch
-- 3-4 batches (one per major file type)
-- Total: ~30-40k tokens
 
 #### Step 2.5: Generate Profile JSON
 
@@ -530,7 +525,82 @@ Create a markdown summary for easy reference:
 
 Save to: `<storage-dir>/profiles/<username>-summary.md`
 
-#### Step 2.7: Display Results
+#### Step 2.7: Generate Agent File
+
+After generating the profile, create a Claude agent file so the user can invoke `review-as-<username>` as an agent directly.
+
+1. **Ask user where to write the agent file**:
+   ```
+   Would you like to generate a Claude agent for quick access?
+
+   This creates an agent you can invoke as `review-as-<username>` from any project.
+
+   Options:
+   1. Default: ~/.claude/agents/review-as-<username>.md
+   2. Custom path
+
+   Enter path or press Enter for default:
+   ```
+
+2. **Generate the agent file** at the chosen path with this structure:
+
+   ```markdown
+   ---
+   name: review-as-<username>
+   description: Review code changes as <display_name> would, based on their learned review style from <total_prs> PRs
+   model: inherit
+   tools: ["Read", "Bash", "Grep", "Glob"]
+   ---
+
+   You are reviewing code as <display_name>. Apply their review style based on this profile.
+
+   ## Review Style
+
+   <Inline profile.review_style.summary>
+
+   **Key Traits**: <Inline profile.review_style.key_traits as comma-separated list>
+
+   **Tone**: <Inline profile.review_style.tone>
+
+   ## Top Focus Areas
+
+   1. <focus_areas[0].category> (<focus_areas[0].frequency>%): <focus_areas[0].patterns>
+   2. <focus_areas[1].category> (<focus_areas[1].frequency>%): <focus_areas[1].patterns>
+   3. <focus_areas[2].category> (<focus_areas[2].frequency>%): <focus_areas[2].patterns>
+
+   ## Common Patterns
+
+   **Opening Phrases**: <common_patterns.opening_phrases>
+
+   **Suggestion Style**: <common_patterns.suggestion_style>
+
+   ## Technical Preferences
+
+   <For each language in technical_preferences.languages, list the preferences>
+
+   ## Anti-Patterns to Flag
+
+   <Inline anti_patterns_flagged as bulleted list>
+
+   ## Instructions
+
+   1. Get the diff: `git diff main...HEAD` (or ask user for base branch)
+   2. For each changed file, review using <display_name>'s style
+   3. Output inline comments with file paths and line numbers
+   4. Provide overall feedback summarizing key findings
+   5. Use their typical tone, phrases, and focus areas
+   6. Flag anti-patterns they commonly catch
+   7. Skip auto-generated files (lock files, build outputs)
+   ```
+
+3. **Create parent directory** if it doesn't exist:
+   ```bash
+   mkdir -p ~/.claude/agents/
+   ```
+
+4. **Write the file** with all profile data inlined (not referenced — the agent file must be self-contained).
+
+#### Step 2.8: Display Results
 
 Show the user:
 
@@ -545,10 +615,12 @@ Show the user:
 📁 Files created:
    - Profile: <storage-dir>/profiles/<username>.json
    - Summary: <storage-dir>/profiles/<username>-summary.md
+   - Agent: ~/.claude/agents/review-as-<username>.md
 
 💡 Next steps:
    - Review the summary: cat <storage-dir>/profiles/<username>-summary.md
-   - Apply to code review with this profile (future feature)
+   - Use the review skill: /review-as <username>
+   - Or invoke the agent directly: review-as-<username>
 ```
 
 ---
@@ -592,15 +664,11 @@ If fewer than 30 PRs are fetched:
 
 ---
 
-## Token Budget
+## Context Management
 
-**Phase 1 (Fetching)**: 0 tokens (no AI)
+**Phase 1 (Fetching)**: Pure API calls, no analysis needed.
 
-**Phase 2 (Analysis)**:
-- Theme extraction: ~127k input + ~8k output = ~135k tokens
-- Style analysis: ~10k tokens
-- Technical preferences: ~30-40k tokens
-- **Total**: ~175-185k tokens (within 200k budget)
+**Phase 2 (Analysis)**: Read cached files in batches of ~15 PRs to keep context manageable. Adjust batch size based on comment density — PRs with many long comments may need smaller batches.
 
 ---
 
@@ -610,23 +678,15 @@ If fewer than 30 PRs are fetched:
 
 Schema for `<storage-dir>/cache/reviews/<username>/pr-{repo}-{number}.json`:
 
+**Note**: This schema is a guideline. A simpler flat structure is acceptable — the key requirement is that each file contains the PR metadata, inline comments, and review comments in a parseable JSON format.
+
 ```json
 {
-  "metadata": {
-    "username": "<username>",
-    "github_host": "<github-host>",
-    "pr_number": 2598,
-    "repository": {
-      "owner": "owner",
-      "name": "repository",
-      "full_name": "owner/repository-name"
-    },
-    "pr_title": "Add config analysis skill",
-    "pr_url": "https://github.com/owner/repository-name/pull/2598",
-    "created_at": "2026-02-26T23:00:19Z",
-    "merged_at": "2026-02-27T10:30:00Z",
-    "fetched_at": "2026-02-27T15:00:00Z"
-  },
+  "pr_number": 2598,
+  "repository": "owner/repository-name",
+  "pr_title": "Add config analysis skill",
+  "pr_url": "https://github.com/owner/repository-name/pull/2598",
+  "closed_at": "2026-02-27T10:30:00Z",
   "inline_comments": [
     {
       "id": 1771821,
@@ -646,12 +706,7 @@ Schema for `<storage-dir>/cache/reviews/<username>/pr-{repo}-{number}.json`:
       "body": "Overall looks good. Just a few suggestions.",
       "submitted_at": "2026-02-26T23:00:19Z"
     }
-  ],
-  "statistics": {
-    "total_inline_comments": 11,
-    "total_review_comments": 1,
-    "files_commented": 3
-  }
+  ]
 }
 ```
 
@@ -833,7 +888,6 @@ The skill is successful when:
 - ✅ Index file accurately reflects cached data
 - ✅ Profile JSON contains all required fields
 - ✅ Summary markdown is human-readable and accurate
-- ✅ Token usage stays within ~185k tokens
 - ✅ All errors are handled gracefully
 - ✅ User receives clear feedback on progress and results
 
@@ -843,6 +897,6 @@ The skill is successful when:
 
 - **No Rate Limits**: Be respectful with API calls
 - **Incremental Progress**: Save progress every 10 PRs to enable resume on interruption
-- **Token Efficiency**: Batch processing keeps analysis within budget
+- **Batch Processing**: Read cached data in batches to manage context
 - **Storage Flexibility**: Support both ephemeral (/tmp) and permanent storage
 - **Future Enhancement**: Could support `--refresh` flag to fetch only new reviews since last run
