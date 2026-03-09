@@ -170,123 +170,38 @@ This phase collects raw data from GitHub without AI analysis.
 
 3. **Store the chosen storage path** for use in Phase 2 and by the review skill.
 
-#### Step 1.2: Fetch PRs Reviewed by User
+#### Step 1.2: Fetch PRs and Review Comments
 
-Use GitHub CLI to search for PRs where the user left reviews:
+Run the fetch script to search for PRs, fetch all inline and review-level comments, and build the index:
 
 ```bash
-gh search prs \
-  --reviewed-by=<username> \
-  --merged \
-  --limit <limit> \
-  --json number,title,repository,closedAt,url \
-  --hostname <github-host>
+python3 <plugin-dir>/scripts/fetch_reviews.py \
+  --user=<username> \
+  --cache-dir=<storage-dir>/cache/reviews/<username> \
+  --limit=<limit>
 ```
 
-**Note**: For public GitHub (github.com), the `--hostname` parameter can be omitted.
+Where `<plugin-dir>` is the directory containing this skill's plugin (i.e. the `code-reviewer-profiles` plugin directory). You can find it relative to this SKILL.md file: `../../../scripts/fetch_reviews.py` or by resolving the plugin root.
 
-**Pagination strategy** (if you need more than 100 PRs):
-- After fetching the first batch, note the oldest `closedAt` date
-- Fetch next batch with: `--merged-at "<{oldest_date}"`
-- Continue until you have ~150 PRs or reach desired limit
+**Host handling**:
+- If `--host` is omitted, the script auto-detects the host from `gh auth status`
+- For GitHub Enterprise, pass `--host=<github-host>` explicitly
+- The script handles `GH_HOST` env var automatically for non-github.com hosts (since `gh search` doesn't support `--hostname`)
 
-**Error handling**:
-- If search fails with rate limit: wait and retry with exponential backoff
-- If search returns 0 results: verify username and GitHub authentication
-- Log any errors to `<storage-dir>/cache/errors.log`
+**Resume support**: If interrupted, re-running the same command resumes from the last checkpoint. The script saves a checkpoint every 10 PRs and skips already-cached PR files.
 
-#### Step 1.3: Fetch Review Comments for Each PR
+**What the script does**:
+1. Searches for merged PRs reviewed by the user (with date-window pagination for >100 PRs)
+2. For each PR, fetches inline comments and review-level comments via `gh api`
+3. Filters comments to only those authored by the target user
+4. Marks trivial comments (LGTM, "Looks good", emoji-only, etc.) with `"trivial": true` — these are preserved in the data but flagged for exclusion during analysis
+5. Normalizes file extensions using `pathlib` and includes a `file_types` summary per PR
+6. Saves each PR to `<cache-dir>/pr-{owner}-{repo}-{number}.json`
+7. Builds `<cache-dir>/index.json` with metadata, repository stats, and PR list
 
-For each PR in the search results:
-
-1. **Fetch inline comments** (comments on specific code lines):
-   ```bash
-   gh api repos/{owner}/{repo}/pulls/{number}/comments --paginate --hostname <github-host>
-   ```
-
-   **Note**: For public GitHub (github.com), the `--hostname` parameter can be omitted.
-
-   **Note**: `gh api --paginate` may return multiple concatenated JSON arrays (not a single array). You must handle this by merging/parsing the output — e.g., pipe through `jq -s 'add'` or concatenate arrays manually after fetching.
-
-   Key fields to capture:
-   - `id`: Comment ID
-   - `path`: File path
-   - `position`: Line position in diff
-   - `original_line`: Original line number
-   - `body`: Comment text
-   - `diff_hunk`: Code context (3 lines before/after)
-   - `created_at`: Timestamp
-   - `side`: LEFT or RIGHT (old vs new code)
-   - `user.login`: Comment author
-
-   **Filter**: Only keep comments where `user.login === "<username>"`
-
-2. **Fetch review-level comments** (overall PR comments):
-   ```bash
-   gh api repos/{owner}/{repo}/pulls/{number}/reviews --hostname <github-host>
-   ```
-
-   **Note**: For public GitHub (github.com), the `--hostname` parameter can be omitted.
-
-   Key fields to capture:
-   - `id`: Review ID
-   - `state`: APPROVED, COMMENTED, CHANGES_REQUESTED
-   - `body`: Review summary text
-   - `submitted_at`: Timestamp
-   - `user.login`: Reviewer
-
-   **Filter**: Only keep reviews where `user.login === "<username>"`
-
-   **Note**: Many review-level comments (especially APPROVED and COMMENTED states) have empty `body` text. Filter these out when counting "comments analyzed" — only count reviews with non-empty body text as meaningful comments.
-
-3. **Save to cache file**:
-   ```
-   <storage-dir>/cache/reviews/<username>/pr-{repo}-{number}.json
-   ```
-
-   Use the schema defined in the plan (see "Data Schemas" section below).
-
-4. **Progress tracking**:
-   - Show progress: "Fetching PR 45/150: service#2598..."
-   - Save progress after every 10 PRs in case of interruption
-   - Skip PRs that return 404 (deleted/private) and log them
-
-#### Step 1.4: Build Index File
-
-After fetching all PRs, create an index for efficient lookup:
-
-```json
-{
-  "username": "<username>",
-  "github_host": "<github-host>",
-  "display_name": "<display-name>",
-  "last_updated": "2026-02-27T15:00:00Z",
-  "total_prs_cached": 150,
-  "total_comments": 847,
-  "repositories": [
-    {
-      "name": "owner/repository-name",
-      "pr_count": 120,
-      "comment_count": 689
-    }
-  ],
-  "pr_list": [
-    {
-      "pr_number": 2598,
-      "repository": "owner/repository-name",
-      "file": "pr-service-2598.json",
-      "comment_count": 11,
-      "closed_at": "2026-02-27T10:30:00Z"
-    }
-  ]
-}
+**End of Phase 1**: The script prints a summary. Display it to the user:
 ```
-
-Save to: `<storage-dir>/cache/reviews/<username>/index.json`
-
-**End of Phase 1**: Display summary to user:
-```
-✅ Fetched 150 PRs with 847 review comments
+✅ Fetched <N> PRs with <M> review comments
 📁 Cached in: <storage-dir>/cache/reviews/<username>/
 📊 Next: Analyzing patterns to build <display-name>'s profile...
 ```
@@ -312,9 +227,11 @@ Read the index file to get the list of cached PRs:
 
 **Goal**: Categorize all comments by theme (Documentation, Testing, Code Structure, etc.)
 
+**Trivial comment handling**: Comments in the cached data that have `"trivial": true` should be **excluded from theme analysis**. Do not categorize or analyze them. However, count them separately and report the total in the final statistics (e.g., "45 approval-only comments excluded from analysis"). These are LGTM, "Looks good", emoji-only, and similar approval comments that don't contain substantive review feedback.
+
 **Process**:
 1. Load PRs in batches of 15
-2. For each batch, extract all inline and review comments
+2. For each batch, extract all inline and review comments, **skipping those with `"trivial": true`**
 3. Analyze with the following categorization:
 
    ```
@@ -372,7 +289,7 @@ Read the index file to get the list of cached PRs:
 **Goal**: Identify language-specific patterns, framework preferences, and anti-patterns
 
 **Process**:
-1. Group comments by file extension (.kt, .java, .md, etc.)
+1. Group comments by file extension using the `file_extension` field on each inline comment (already normalized by the fetch script via `pathlib` — handles Dockerfile, dotfiles, and extensionless files correctly). You can also use the per-PR `file_types` summary for quick aggregation.
 2. Sample 30 representative PRs across different repos and file types
 3. For each file type, analyze with:
 
@@ -521,6 +438,7 @@ Create a markdown summary for easy reference:
 - Average comments per PR: 5.6
 - Most commented file types: .kt (423), .java (289), .md (87)
 - Comment distribution: 65% suggestions, 20% blocking issues, 15% nitpicks
+- Trivial/approval-only comments excluded from analysis: <N>
 ```
 
 Save to: `<storage-dir>/profiles/<username>-summary.md`
@@ -652,9 +570,9 @@ After fetching each PR:
 ### Interrupted Progress
 
 If the skill is interrupted during Phase 1:
-- On restart, check the index file for last processed PR
-- Resume from where it left off
-- Display: "Resuming from PR 78/150..."
+- Simply re-run the same `fetch_reviews.py` command — it resumes from the last checkpoint automatically
+- The script saves a `checkpoint.json` every 10 PRs and skips already-cached PR files
+- Display: "Resuming from checkpoint: PR 78/150..."
 
 ### Insufficient Data
 
@@ -666,7 +584,7 @@ If fewer than 30 PRs are fetched:
 
 ## Context Management
 
-**Phase 1 (Fetching)**: Pure API calls, no analysis needed.
+**Phase 1 (Fetching)**: Handled entirely by `fetch_reviews.py` — no AI analysis needed.
 
 **Phase 2 (Analysis)**: Read cached files in batches of ~15 PRs to keep context manageable. Adjust batch size based on comment density — PRs with many long comments may need smaller batches.
 
@@ -676,9 +594,9 @@ If fewer than 30 PRs are fetched:
 
 ### Cached PR Review File
 
-Schema for `<storage-dir>/cache/reviews/<username>/pr-{repo}-{number}.json`:
+Schema for `<storage-dir>/cache/reviews/<username>/pr-{owner}-{repo}-{number}.json`:
 
-**Note**: This schema is a guideline. A simpler flat structure is acceptable — the key requirement is that each file contains the PR metadata, inline comments, and review comments in a parseable JSON format.
+This schema is produced by the `fetch_reviews.py` script. Each file contains PR metadata, inline comments, review comments, and a file type summary.
 
 ```json
 {
@@ -696,7 +614,9 @@ Schema for `<storage-dir>/cache/reviews/<username>/pr-{repo}-{number}.json`:
       "body": "You could make this quite a bit easier...",
       "diff_hunk": "@@ -0,0 +1,244 @@\n+# Analyze Active Published Config in DynamoDB",
       "created_at": "2026-02-26T23:00:19Z",
-      "side": "RIGHT"
+      "side": "RIGHT",
+      "file_extension": "md",
+      "trivial": false
     }
   ],
   "review_comments": [
@@ -704,11 +624,29 @@ Schema for `<storage-dir>/cache/reviews/<username>/pr-{repo}-{number}.json`:
       "id": 2267044,
       "state": "COMMENTED",
       "body": "Overall looks good. Just a few suggestions.",
-      "submitted_at": "2026-02-26T23:00:19Z"
+      "submitted_at": "2026-02-26T23:00:19Z",
+      "trivial": false
+    },
+    {
+      "id": 2267045,
+      "state": "APPROVED",
+      "body": "LGTM",
+      "submitted_at": "2026-02-26T23:05:00Z",
+      "trivial": true
     }
-  ]
+  ],
+  "file_types": {
+    "md": 1,
+    "kt": 3,
+    "Dockerfile": 1
+  }
 }
 ```
+
+**Key fields added by the fetch script**:
+- `trivial` (boolean): `true` for LGTM, "Looks good", emoji-only, and similar approval comments. Exclude these from theme analysis but count them in statistics.
+- `file_extension` (string): Normalized file extension via `pathlib`. Handles special cases: `Dockerfile`, `.gitignore`, extensionless files → `"no-extension"`.
+- `file_types` (object): Per-PR summary of file extensions mentioned in inline comments.
 
 ---
 
