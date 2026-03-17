@@ -1,21 +1,21 @@
 # Code Reviewer Profiles
 
-Learn and apply code review styles from GitHub history. This plugin analyzes a person's past code reviews to understand their style, preferences, and patterns, then applies that learned style to review new code.
+Learn and apply code review styles from GitHub history. This plugin analyzes a person's past code reviews to understand their style, preferences, and patterns, then applies that learned style — combined with a structured review methodology — to review new code.
 
 ## Purpose
 
 This plugin enables:
+- **Substantive code review**: Structured methodology checks functional correctness, naming, intent comments, hackiness, test coverage, and optimization — with findings categorized by priority (P1/P2/P3)
+- **Persona-driven feedback**: Reviews are expressed in the reviewer's learned tone, phrases, and focus areas
 - **Automated self-review**: Review your own code in the style of an experienced reviewer before creating a PR
-- **Understanding reviewer patterns**: Learn what matters most to specific reviewers
 - **Consistency in code review**: Apply consistent review standards across teams
-- **Learning from experience**: Understand experienced reviewers' patterns and preferences
 
 ## How It Works
 
 1. **Fetch review history** from GitHub using the GitHub CLI
 2. **Analyze patterns** using AI to extract style, preferences, and focus areas
 3. **Generate a profile** capturing the reviewer's approach
-4. **Apply the profile** to review new code changes in that reviewer's style
+4. **Apply the profile** to review new code changes — the review methodology determines **what** to check, the profile determines **how** findings are expressed
 
 ## Available Skills
 
@@ -90,12 +90,18 @@ Required scopes:
 
 For `/review-as-ben`, you must be in a git repository with code changes to review.
 
+## References
+
+The `references/` directory contains review methodology documents used during code review:
+
+- **`review-principles.md`** — Concrete good/bad examples for intent comments, naming, hackiness, documentation/tests, and language-specific patterns. These principles are language-agnostic (examples happen to be Kotlin/TypeScript but apply universally).
+
 ## Data Storage
 
-By default, profile data is stored in `/tmp/code-reviewer-profiles/`:
+Profile data is stored in `~/.claude/reviewer-profiles/`:
 
 ```
-/tmp/code-reviewer-profiles/
+~/.claude/reviewer-profiles/
 ├── profiles/
 │   ├── <username>.json           # Reviewer profile
 │   └── <username>-summary.md      # Human-readable summary
@@ -105,8 +111,6 @@ By default, profile data is stored in `/tmp/code-reviewer-profiles/`:
             ├── index.json                # Metadata index
             └── pr-{repo}-{number}.json   # Individual PRs
 ```
-
-**Note**: `/tmp` is ephemeral and cleared on system restart. When running `/build-code-reviewer-profile`, you'll be prompted to specify a permanent storage location if you want the profile to persist (e.g., `~/.claude/reviewer-profiles/`).
 
 ### Storage Structure
 
@@ -123,20 +127,17 @@ The plugin is designed to be token-efficient:
   - Style analysis: ~10k tokens (1 batch)
   - Technical preferences: ~30k tokens (3-4 batches)
 
-- **Applying a review**: ~10k tokens per review
-  - Profile summary: ~2k tokens
-  - Code diff: ~5k tokens (typical PR)
-  - Review output: ~3k tokens
+- **Applying a review**: ~10-12k tokens per file
+  - Methodology checklist + review principles: ~1.5k tokens
+  - Profile context (persona): ~2k tokens
+  - Code diff: ~3-5k tokens (typical file)
+  - Review output: ~3-4k tokens
 
 ## Example Workflow
 
 ```bash
 # 1. Build a reviewer profile (one-time setup)
 /build-code-reviewer-profile --user=<username>
-
-# When prompted, choose storage location:
-# - Press Enter for /tmp (ephemeral, cleared on restart)
-# - Or specify: ~/.claude/reviewer-profiles/ (permanent)
 
 # 2. Create a feature branch and make changes
 git checkout -b feature/my-new-feature
@@ -160,8 +161,8 @@ gh pr create --draft
 
 If `/review-as-ben` can't find the profile:
 1. Run `/build-code-reviewer-profile --user=bgaudiosi` first to create Ben's profile
-2. If you stored it in a custom location, provide that path when prompted
-3. Check that the profile file exists: `ls /tmp/code-reviewer-profiles/profiles/`
+2. If you stored it in a custom location, use the `--profile` flag
+3. Check that the profile file exists: `ls ~/.claude/reviewer-profiles/profiles/`
 
 ### "gh: command not found"
 
@@ -225,9 +226,11 @@ The profile captures:
 When applying a profile:
 1. Load the reviewer's profile (style, preferences, patterns)
 2. Get code changes via `git diff`
-3. For each file/chunk, generate review comments using the profile as context
-4. Format output as inline comments with line references
-5. Provide overall feedback matching the reviewer's typical approach
+3. Auto-detect build system and run build/tests if available
+4. Load review methodology checklist and review principles reference
+5. For each file/chunk, generate review using a single prompt combining methodology checklist + persona overlay
+6. Categorize findings by priority: P1 (must fix), P2 (should fix), P3 (consider)
+7. Format output with priority grouping, line references, and checklist coverage
 
 ## Contributing
 

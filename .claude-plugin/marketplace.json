@@ -5,11 +5,6 @@
   },
   "plugins": [
     {
-      "name": "example-plugin",
-      "source": "./plugins/example-plugin",
-      "description": "Example plugin demonstrating command structure"
-    },
-    {
       "name": "code-reviewer-profiles",
       "source": "./plugins/code-reviewer-profiles",
       "description": "Learn and apply code review styles from GitHub history"
