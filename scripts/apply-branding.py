@@ -100,7 +100,6 @@ def main():
     files_to_update = [
         "docs/index.html",
         ".claude-plugin/marketplace.json",
-        "plugins/example-plugin/.claude-plugin/plugin.json",
         "README.md",
     ]
 

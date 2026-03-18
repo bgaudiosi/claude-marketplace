@@ -1,13 +1,20 @@
 ---
 name: review-as
-description: Review code changes using a reviewer's learned style from their GitHub history
-version: 0.2.0
+description: Review code changes using a reviewer's learned style combined with rigorous review methodology
+version: 0.3.0
 tags: [github, code-review, automation, reviewer-profile]
 ---
 
 # Review As
 
-Reviews your code changes using a reviewer's learned style from their GitHub history. Provides inline comments and overall feedback matching their patterns, tone, and technical preferences.
+Reviews your code changes using a reviewer's learned style from their GitHub history, layered on top of a structured review methodology. The profile determines HOW findings are expressed; the methodology determines WHAT to check.
+
+## Review Philosophy
+
+Code should be:
+1. **Functional first** — Compiles, tests pass, logic is correct
+2. **Clean and maintainable second** — Intent comments, verbose naming, no hackiness
+3. **Optimized third** — Performance considerations (only after 1 & 2)
 
 ## When to Use This Skill
 
@@ -31,10 +38,9 @@ Use this skill when:
 
 ### Required
 
-1. **Reviewer Profile** — Must exist at one of (checked in order):
+1. **Reviewer Profile** — Must exist at:
    - `~/.claude/reviewer-profiles/profiles/<username>.json`
-   - `/tmp/code-reviewer-profiles/profiles/<username>.json`
-   - Custom location via `--profile <path>`
+   - Or custom location via `--profile <path>`
 
    If not found, run `/build-code-reviewer-profile --user=<username>` first.
 
@@ -65,18 +71,16 @@ Use this skill when:
 
 ### Step 1: Locate Reviewer Profile
 
-1. **Search for profile** in order:
-   - `~/.claude/reviewer-profiles/profiles/<username>.json`
-   - `/tmp/code-reviewer-profiles/profiles/<username>.json`
-   - If `--profile` flag provided, use that path instead
+1. **Search for profile**:
+   - If `--profile` flag provided, use that path
+   - Otherwise, check `~/.claude/reviewer-profiles/profiles/<username>.json`
 
 2. **If not found**, prompt user:
    ```
-   ❌ Reviewer profile for '<username>' not found.
+   Reviewer profile for '<username>' not found.
 
    Searched:
    - ~/.claude/reviewer-profiles/profiles/<username>.json
-   - /tmp/code-reviewer-profiles/profiles/<username>.json
 
    Options:
    1. Run /build-code-reviewer-profile --user=<username> to create it
@@ -140,20 +144,34 @@ Get the unified diff with context:
 git diff <base-branch>...<current-branch> --unified=3
 ```
 
-**Output format**:
-```diff
-diff --git a/services/ConfigService.kt b/services/ConfigService.kt
-index abc123..def456 100644
---- a/services/ConfigService.kt
-+++ b/services/ConfigService.kt
-@@ -45,6 +45,10 @@ class ConfigService {
-     fun getConfig(id: String): Config? {
--        return repository.findById(id)
-+        return repository.findById(id).orElse(null)
-     }
-```
+### Step 2.5: Build Validation (Optional)
+
+Auto-detect the project's build system and run build + tests if possible.
+
+1. **Detect build system** by checking for:
+   - `build.gradle*` or `pom.xml` → Gradle/Maven (run `./gradlew build` or `mvn verify`)
+   - `package.json` → Node (run `npm test` or `yarn test`)
+   - `Cargo.toml` → Rust (run `cargo build && cargo test`)
+   - `go.mod` → Go (run `go build ./... && go test ./...`)
+   - `Makefile` → Make (run `make test`)
+   - `Gemfile` → Ruby (run `bundle exec rake test`)
+   - `pyproject.toml` or `setup.py` → Python (run `pytest`)
+
+2. **Run build + tests** if detected:
+   - Set a 2-minute timeout
+   - Record pass/fail/skipped status
+   - If no build system found or build takes >2min, skip gracefully
+
+3. **Feed results into review**:
+   - Build failures become P1 findings
+   - Test failures become P1 findings with specific test names
+   - Build success is noted in the review header
 
 ### Step 3: Process Diff for Review
+
+#### Load Review Principles
+
+Read `references/review-principles.md` (relative to this skill: `../../references/review-principles.md`) for detailed review context with concrete examples.
 
 #### Split Into Reviewable Chunks
 
@@ -175,105 +193,169 @@ Use the reviewer's profile to prioritize:
 
 ### Step 4: Generate Review Comments
 
-For each file/chunk, generate review using the reviewer's profile as context.
+For each file/chunk, generate review using a single prompt that combines the methodology checklist with the reviewer's persona overlay. This is a single pass — not two separate passes — for token efficiency.
 
 #### Construct AI Prompt
 
 Include in the prompt:
 
-1. **Profile Context** (~2k tokens):
+1. **Methodology Checklist** (~1.5k tokens):
    ```
-   You are reviewing code as {display_name}. Use their review style:
+   Review this code change against the following checklist. For each area,
+   note any findings with the appropriate priority level.
+
+   CHECKLIST:
+   1. Functional Correctness (P1 — must fix)
+      - Logic errors, off-by-ones, race conditions
+      - Error handling gaps (swallowed exceptions, missing cases)
+      - Build/test results: {build_status}
+      - Null safety issues, type mismatches
+
+   2. Intent & Documentation (P2 — should fix)
+      - Comments that don't match the code they describe
+      - Missing "why" comments on non-obvious logic
+      - Public API docs missing or outdated
+      - Comments with major typos or grammar issues
+
+   3. Naming & Readability (P2 — should fix)
+      - Abbreviated variable/function names (use verbose names)
+      - Standard abbreviations OK: id, url, html, json, xml, dto, api
+      - Unclear or misleading names
+
+   4. Hackiness & Code Quality (P2 — should fix)
+      - TODO comments used as excuse for poor code
+      - Workarounds without explanation or ticket reference
+      - Copy-pasted code that should be extracted
+      - Magic numbers without named constants
+
+   5. Test Coverage (P2 — should fix)
+      - New functionality missing tests
+      - Tests only covering happy path (need edge cases, error cases)
+      - Test names that don't describe behavior
+
+   6. Optimization (P3 — consider)
+      - Only flag clearly impactful performance issues
+      - N+1 queries, unnecessary allocations in hot paths
+      - Do NOT nitpick micro-optimizations
+
+   For detailed examples of each principle, the review-principles.md
+   reference has been loaded as context.
+   ```
+
+2. **Persona Overlay** (~2k tokens):
+   ```
+   Express all findings in {display_name}'s review style:
 
    **Review Style**: {profile.review_style.summary}
-
    **Key Traits**: {profile.review_style.key_traits}
-
    **Tone**: {profile.review_style.tone}
 
-   **Top Focus Areas**:
+   **Top Focus Areas** (give these extra scrutiny):
    1. {focus_areas[0].category} ({focus_areas[0].frequency}%): {focus_areas[0].patterns}
    2. {focus_areas[1].category} ({focus_areas[1].frequency}%): {focus_areas[1].patterns}
    3. {focus_areas[2].category} ({focus_areas[2].frequency}%): {focus_areas[2].patterns}
 
    **Common Opening Phrases**: {common_patterns.opening_phrases}
-
    **Suggestion Style**: {common_patterns.suggestion_style}
 
    **Technical Preferences for {file_extension}**:
    {technical_preferences.languages[language].preferences}
 
    **Anti-patterns to Flag**: {anti_patterns_flagged}
+
+   IMPORTANT:
+   - P1 issues are ALWAYS flagged regardless of persona focus areas
+   - Reviewer's focus areas weight which P2 issues get more scrutiny
+   - Use the reviewer's typical phrases and tone for all comments
+   - Reference specific line numbers from the diff
    ```
 
-2. **Code Diff** (~5k tokens for typical file):
+3. **Code Diff** (~3-5k tokens):
    ```
-   Review this code change:
-
    File: {file_path}
 
    {diff_content}
    ```
 
-3. **Instructions**:
+4. **Output Format Instructions**:
    ```
-   Provide a code review in {display_name}'s style:
-   - Use their typical phrases and tone
-   - Focus on their priority areas
-   - Flag anti-patterns they commonly catch
-   - Structure suggestions as they would (with examples, explanations, questions)
-   - Reference specific line numbers from the diff
-
-   Output format:
+   Output as JSON:
    {
-     "inline_comments": [
+     "p1_issues": [
        {
+         "file": "<file_path>",
          "line": <line_number>,
-         "comment": "<review comment in their style>"
+         "category": "<checklist category>",
+         "comment": "<review comment in reviewer's voice>",
+         "suggestion": "<optional code suggestion>"
        }
      ],
-     "overall_feedback": "<high-level observations>"
+     "p2_issues": [...],
+     "p3_issues": [...],
+     "overall_feedback": "<high-level observations in reviewer's voice>",
+     "checklist_coverage": ["functional_correctness", "intent_documentation", ...]
    }
    ```
 
 #### Parse AI Response
 
-Extract inline comments and overall feedback from JSON response.
+Extract priority-categorized findings and overall feedback from JSON response.
 
 ### Step 5: Format Review Output
 
-Display the review in a readable format:
+Display the review grouped by priority:
 
 ```markdown
 ## Code Review (as {display_name})
 
-**Branch**: feature/my-feature
-**Base**: main
+**Branch**: feature/my-feature → main
 **Files changed**: 5
+**Build**: Passed / Failed / Skipped
 
 ---
 
-### services/ConfigService.kt
+### P1: Must Fix
 
-**Line 47**: Consider using `Optional` more idiomatically here
-You could make this more robust by handling the empty case explicitly:
-```kotlin
+**services/ConfigService.kt:47** `[Functional Correctness]`
+{Comment in reviewer's voice about the issue}
+```suggestion
 return repository.findById(id).orElseThrow {
     NotFoundException("Config not found: $id")
 }
 ```
 
-**Line 65**: This method is getting large - consider extraction
-Have you thought about breaking this into smaller, focused methods? For example, the validation logic could be its own method.
+**services/DataSync.kt:89** `[Functional Correctness]`
+{Comment about swallowed exception}
+
+---
+
+### P2: Should Fix
+
+**services/ConfigService.kt:65** `[Naming]`
+{Comment about abbreviated variable name}
+
+**services/OrderService.kt:112** `[Intent & Documentation]`
+{Comment about missing "why" comment}
+
+**tests/ConfigServiceTest.kt** `[Test Coverage]`
+{Comment about missing edge case tests}
+
+---
+
+### P3: Consider
+
+**services/Repository.kt:120** `[Optimization]`
+{Comment about N+1 query}
 
 ---
 
 ### Overall Feedback
 
-[High-level observations in the reviewer's style]
+{High-level observations in the reviewer's style}
 
 ---
 
+**Checklist coverage**: 6/6 areas checked (Functional, Intent, Naming, Hackiness, Tests, Optimization)
 **Profile source**: <username>.json ({total_prs} PRs analyzed, generated {date})
 ```
 
@@ -282,13 +364,17 @@ Have you thought about breaking this into smaller, focused methods? For example,
 After showing the review, display summary stats:
 
 ```
-📊 Review Summary:
+Review Summary:
    - Files reviewed: 5
-   - Inline comments: 12
-   - Focus areas covered: Documentation (4), Code Structure (3), Error Handling (3), Style (2)
-   - Review generated using profile from {total_prs} PRs
+   - Build/tests: Passed
+   - P1 (must fix): 2
+   - P2 (should fix): 5
+   - P3 (consider): 1
+   - Checklist coverage: 6/6
+   - Focus areas covered: Documentation (4), Code Structure (3), Error Handling (3)
+   - Profile: {total_prs} PRs analyzed
 
-💡 Tip: Address these comments before creating your PR to align with {display_name}'s expectations.
+Tip: Address P1 issues before creating your PR. P2s align with {display_name}'s expectations.
 ```
 
 ---
@@ -298,10 +384,11 @@ After showing the review, display summary stats:
 ### Token Budget Per Review
 
 Typical breakdown for a medium PR:
-- Profile context: ~2k tokens
+- Methodology checklist + review principles: ~1.5k tokens
+- Profile context (persona): ~2k tokens
 - Code diff (per file): ~3-5k tokens
-- Generated review: ~2-3k tokens
-- **Total per file**: ~7-10k tokens
+- Generated review: ~3-4k tokens
+- **Total per file**: ~10-12k tokens
 
 ### Handling Large Diffs
 
@@ -341,7 +428,7 @@ Show: "Skipped 3 files: package-lock.json (auto-generated), ConfigTest.kt.orig (
 
 If profile doesn't exist:
 ```
-❌ Reviewer profile for '<username>' not found.
+Reviewer profile for '<username>' not found.
 
 Run `/build-code-reviewer-profile --user=<username>` first to generate the profile, or specify a custom location with:
    /review-as <username> --profile <path-to-profile>
@@ -351,7 +438,7 @@ Run `/build-code-reviewer-profile --user=<username>` first to generate the profi
 
 If not in a git repo:
 ```
-❌ Not in a git repository.
+Not in a git repository.
 
 This skill requires a git repository to review code changes.
 ```
@@ -360,7 +447,7 @@ This skill requires a git repository to review code changes.
 
 If diff is empty:
 ```
-✅ No changes found to review.
+No changes found to review.
 
 Current state:
 - Branch: feature/my-feature
@@ -420,31 +507,50 @@ If AI fails to generate review:
 
 ## Examples
 
-### Example 1: Basic Review
+### Example 1: Full Review with Build Validation
 
 ```bash
-# User has changes on feature branch
 git checkout feature/add-config-caching
-
-# Run review as a specific reviewer
 /review-as octocat
 
 # Output:
 > Loading octocat's reviewer profile...
-> ✅ Profile loaded (150 PRs analyzed)
+> Profile loaded (150 PRs analyzed)
 >
 > Analyzing changes on feature/add-config-caching vs main...
 > Found 3 files with changes (428 lines)
 >
-> Generating review in The Octocat's style...
+> Running build validation... Passed (12 tests, 0 failures)
+>
+> Generating review as The Octocat...
 >
 > ## Code Review (as The Octocat)
 >
-> ### services/ConfigService.kt
+> **Branch**: feature/add-config-caching → main
+> **Files changed**: 3
+> **Build**: Passed (12 tests)
 >
-> **Line 56**: Consider adding a cache eviction strategy
-> You could make this more robust by...
-> [... rest of review ...]
+> ### P1: Must Fix
+>
+> **services/CacheService.kt:89** `[Functional Correctness]`
+> Cache eviction never triggers — TTL comparison is inverted
+>
+> ### P2: Should Fix
+>
+> **services/ConfigService.kt:47** `[Naming]`
+> `cfg` → `configuration` — let's be explicit here
+>
+> **services/ConfigService.kt:65** `[Intent & Documentation]`
+> This caching logic is subtle — add a comment explaining the eviction strategy
+>
+> ### P3: Consider
+>
+> (none)
+>
+> ### Overall Feedback
+> Good approach to caching! The TTL bug in CacheService is the main blocker.
+>
+> **Checklist coverage**: 6/6
 ```
 
 ### Example 2: Profile Not Found
@@ -453,11 +559,10 @@ git checkout feature/add-config-caching
 /review-as jsmith
 
 # Output:
-> ❌ Reviewer profile for 'jsmith' not found.
+> Reviewer profile for 'jsmith' not found.
 >
 > Searched:
 > - ~/.claude/reviewer-profiles/profiles/jsmith.json
-> - /tmp/code-reviewer-profiles/profiles/jsmith.json
 >
 > Options:
 > 1. Run /build-code-reviewer-profile --user=jsmith to create it
@@ -480,7 +585,7 @@ git checkout feature/add-config-caching
    git add .
    git commit -m "Implement feature"
    /review-as <username>
-   # ... address feedback ...
+   # ... address P1 and P2 feedback ...
    git add .
    git commit -m "Address review feedback"
    gh pr create --draft
@@ -493,22 +598,25 @@ git checkout feature/add-config-caching
 ## Success Criteria
 
 The skill is successful when:
-- ✅ Reviewer profile is loaded correctly from username lookup
-- ✅ Code changes are fetched via git diff
-- ✅ Review comments match the reviewer's style and tone
-- ✅ Focus areas align with the reviewer's priorities
-- ✅ Technical preferences are applied correctly
-- ✅ Output is formatted clearly with line references
-- ✅ Overall feedback captures the reviewer's typical approach
-- ✅ Token usage stays within ~10k per file
-- ✅ Large diffs are handled gracefully
+- Reviewer profile is loaded correctly from username lookup
+- Code changes are fetched via git diff
+- Build/tests are run when a build system is detected
+- Review comments are categorized by priority (P1/P2/P3)
+- P1 functional issues are always caught regardless of persona
+- Review comments match the reviewer's style and tone
+- Focus areas align with the reviewer's priorities
+- All 6 checklist areas are evaluated
+- Output is formatted with priority grouping and line references
+- Token usage stays within ~12k per file
+- Large diffs are handled gracefully
 
 ---
 
 ## Notes
 
-- **Token Efficiency**: Uses ~10k tokens per review (affordable for frequent use)
+- **Token Efficiency**: Uses ~10-12k tokens per file review (single combined pass)
 - **Profile Freshness**: Warns if profile is >30 days old
 - **File Filtering**: Skips files the reviewer rarely reviews (auto-generated, etc.)
 - **Graceful Degradation**: Falls back to simpler review if full analysis fails
-- **Not a Replacement**: This is for self-review - still get human review before merging!
+- **Build Validation**: Auto-detects build system, skips if not found or >2min
+- **Not a Replacement**: This is for self-review — still get human review before merging!

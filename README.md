@@ -13,12 +13,12 @@ Add the marketplace to Claude Code:
 Install a specific plugin:
 
 ```
-/plugin install example-plugin@ben-dev
+/plugin install code-reviewer-profiles@ben-dev
 ```
 
 ## Plugins
 
-- **example-plugin**: Example plugin demonstrating command structure
+- **code-reviewer-profiles**: Learn and apply code review styles from GitHub history
 
 ## Development
 

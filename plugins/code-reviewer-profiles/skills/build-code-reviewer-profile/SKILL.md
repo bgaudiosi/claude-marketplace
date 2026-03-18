@@ -3,6 +3,7 @@ name: build-code-reviewer-profile
 description: Fetch any GitHub user's review history and generate a code reviewer profile
 version: 0.1.0
 tags: [github, code-review, profile-generation, analysis]
+allowed-tools: Bash(gh api:*), Bash(gh auth:*)
 ---
 
 # Build Code Reviewer Profile
@@ -26,7 +27,6 @@ Use this skill when:
 - `--host=<hostname>` - GitHub host (default: `github.com`)
   - For GitHub Enterprise: `--host=github.enterprise.com`
   - For public GitHub: omit or use `--host=github.com`
-- `--storage=<path>` - Storage directory (default: `/tmp/code-reviewer-profiles/`)
 - `--limit=<number>` - Maximum PRs to fetch (default: 150)
 
 ### Examples
@@ -37,9 +37,6 @@ Use this skill when:
 
 # Enterprise GitHub user with custom host
 /build-code-reviewer-profile --user=jsmith --host=github.enterprise.com
-
-# With custom storage
-/build-code-reviewer-profile --user=torvalds --storage=~/.claude/profiles/
 
 # Interactive (will prompt for username and host)
 /build-code-reviewer-profile
@@ -83,7 +80,7 @@ This phase collects raw data from GitHub without AI analysis.
 #### Step 1.0: Parse Arguments and Collect Parameters
 
 1. **Parse command-line arguments**:
-   - Extract `--user`, `--host`, `--storage`, `--limit` if provided
+   - Extract `--user`, `--host`, `--limit` if provided
 
 2. **Prompt for missing required parameters**:
 
@@ -143,7 +140,7 @@ This phase collects raw data from GitHub without AI analysis.
       Username: <username>
       Display name: <display-name>
       GitHub host: <github-host>
-      Storage: <storage-dir> (will prompt next)
+      Storage: ~/.claude/reviewer-profiles/
       PR limit: <limit>
 
    Continue? (y/n)
@@ -151,24 +148,13 @@ This phase collects raw data from GitHub without AI analysis.
 
 #### Step 1.1: Initialize Storage
 
-1. **Prompt user for storage location**:
-   ```
-   Profile data will be stored persistently. Where would you like to store it?
-
-   Options:
-   1. Default location: /tmp/code-reviewer-profiles/ (cleared on system restart)
-   2. Permanent location (e.g., ~/.claude/reviewer-profiles/)
-
-   Enter path or press Enter for default:
-   ```
+1. **Set storage directory** to `~/.claude/reviewer-profiles/` (no user prompt needed).
 
 2. **Create directory structure**:
    ```bash
-   mkdir -p <storage-dir>/profiles
-   mkdir -p <storage-dir>/cache/reviews/<username>
+   mkdir -p ~/.claude/reviewer-profiles/profiles
+   mkdir -p ~/.claude/reviewer-profiles/cache/reviews/<username>
    ```
-
-3. **Store the chosen storage path** for use in Phase 2 and by the review skill.
 
 #### Step 1.2: Fetch PRs and Review Comments
 
@@ -662,16 +648,6 @@ This schema is produced by the `fetch_reviews.py` script. Each file contains PR 
 > Fetching display name from GitHub...
 > Display name: The Octocat
 
-# Skill prompts for storage location
-> Where would you like to store profile data?
-> 1. Default: /tmp/code-reviewer-profiles/ (ephemeral)
-> 2. Permanent: ~/.claude/reviewer-profiles/
->
-> Enter path or press Enter for default:
-
-# User chooses permanent location
-~/.claude/reviewer-profiles/
-
 > 📋 Configuration:
 >    Username: octocat
 >    Display name: The Octocat
@@ -739,27 +715,17 @@ This schema is produced by the `fetch_reviews.py` script. Each file contains PR 
 > Fetching display name from GitHub...
 > Display name: Jane Smith
 
-# Skill prompts for storage location
-> Where would you like to store profile data?
-> 1. Default: /tmp/code-reviewer-profiles/ (ephemeral)
-> 2. Permanent: ~/.claude/reviewer-profiles/
->
-> Enter path or press Enter for default:
-
-# User presses Enter for default
-/tmp/code-reviewer-profiles/
-
 > 📋 Configuration:
 >    Username: jsmith
 >    Display name: Jane Smith
 >    GitHub host: github.enterprise.com
->    Storage: /tmp/code-reviewer-profiles/
+>    Storage: ~/.claude/reviewer-profiles/
 >    PR limit: 150
 >
 > Continue? (y/n) y
 
 # Phase 1: Fetching
-> Initializing storage at /tmp/code-reviewer-profiles/...
+> Initializing storage at ~/.claude/reviewer-profiles/...
 > Verifying GitHub authentication to github.enterprise.com...
 > ✓ Authenticated as jsmith
 >
@@ -778,15 +744,15 @@ This schema is produced by the `fetch_reviews.py` script. Each file contains PR 
 > ✅ Profile generated successfully!
 >
 > Files created:
->   - Profile: /tmp/code-reviewer-profiles/profiles/jsmith.json
->   - Summary: /tmp/code-reviewer-profiles/profiles/jsmith-summary.md
+>   - Profile: ~/.claude/reviewer-profiles/profiles/jsmith.json
+>   - Summary: ~/.claude/reviewer-profiles/profiles/jsmith-summary.md
 ```
 
 ### Example 3: Ben Gaudiosi (Concrete Example)
 
 ```bash
 # Building a profile for Ben Gaudiosi on Toast's GitHub Enterprise
-/build-code-reviewer-profile --user=bgaudiosi --host=github.enterprise.com --storage=~/.claude/profiles/
+/build-code-reviewer-profile --user=bgaudiosi --host=github.enterprise.com
 
 > Fetching display name from GitHub...
 > Display name: Ben Gaudiosi
@@ -795,7 +761,7 @@ This schema is produced by the `fetch_reviews.py` script. Each file contains PR 
 >    Username: bgaudiosi
 >    Display name: Ben Gaudiosi
 >    GitHub host: github.enterprise.com
->    Storage: ~/.claude/profiles/
+>    Storage: ~/.claude/reviewer-profiles/
 >    PR limit: 150
 >
 > Continue? (y/n) y
@@ -810,8 +776,8 @@ This schema is produced by the `fetch_reviews.py` script. Each file contains PR 
 >    - Top focus areas: Documentation (42%), Code Structure (31%), Testing (18%)
 >
 > Files created:
->   - Profile: ~/.claude/profiles/profiles/bgaudiosi.json
->   - Summary: ~/.claude/profiles/profiles/bgaudiosi-summary.md
+>   - Profile: ~/.claude/reviewer-profiles/profiles/bgaudiosi.json
+>   - Summary: ~/.claude/reviewer-profiles/profiles/bgaudiosi-summary.md
 >
 > Next: Use /review-as-ben to apply this profile to code reviews
 ```
@@ -836,5 +802,5 @@ The skill is successful when:
 - **No Rate Limits**: Be respectful with API calls
 - **Incremental Progress**: Save progress every 10 PRs to enable resume on interruption
 - **Batch Processing**: Read cached data in batches to manage context
-- **Storage Flexibility**: Support both ephemeral (/tmp) and permanent storage
+- **Storage**: All profiles stored in `~/.claude/reviewer-profiles/`
 - **Future Enhancement**: Could support `--refresh` flag to fetch only new reviews since last run
