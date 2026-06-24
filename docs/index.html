@@ -225,12 +225,6 @@
             color: white;
         }
 
-        .autocomplete-item-icon.command {
-            background: var(--bg-code);
-            color: var(--success);
-            border: 1px solid var(--border);
-        }
-
         .autocomplete-item-icon.skill {
             background: var(--bg-code);
             color: var(--accent);
@@ -351,37 +345,6 @@
 
         .section-title:first-of-type {
             margin-top: 0;
-        }
-
-        .command-item {
-            margin-bottom: 1rem;
-            padding: 0.75rem;
-            background: var(--bg-code);
-            border-radius: 8px;
-        }
-
-        .command-name {
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 0.9rem;
-            color: var(--success);
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-        }
-
-        .command-synopsis {
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-bottom: 0.5rem;
-            padding: 0.5rem;
-            background: var(--bg-dark);
-            border-radius: 4px;
-            overflow-x: auto;
-        }
-
-        .command-description {
-            font-size: 0.875rem;
-            color: var(--text-muted);
         }
 
         .skill-item {
@@ -757,10 +720,6 @@
                         <div class="stat-label">Plugins</div>
                     </div>
                     <div class="stat">
-                        <div class="stat-value" id="command-count">0</div>
-                        <div class="stat-label">Commands</div>
-                    </div>
-                    <div class="stat">
                         <div class="stat-value" id="skill-count">0</div>
                         <div class="stat-label">Skills</div>
                     </div>
@@ -788,7 +747,7 @@
                 type="text"
                 id="search"
                 class="search-input"
-                placeholder="Search plugins, commands, and skills..."
+                placeholder="Search plugins and skills..."
                 autocomplete="off"
             >
             <div id="autocomplete" class="autocomplete-dropdown"></div>
@@ -797,7 +756,7 @@
         <div class="plugins-grid" id="plugins-grid"></div>
 
         <div class="no-results" id="no-results">
-            No plugins or commands found matching your search.
+            No plugins found matching your search.
         </div>
 
         <footer>
@@ -828,8 +787,6 @@
 
                 // Update stats
                 document.getElementById('plugin-count').textContent = data.plugins.length;
-                const totalCommands = data.plugins.reduce((sum, p) => sum + p.commands.length, 0);
-                document.getElementById('command-count').textContent = totalCommands;
                 const totalSkills = data.plugins.reduce((sum, p) => sum + (p.skills || []).length, 0);
                 document.getElementById('skill-count').textContent = totalSkills;
                 const totalHooks = data.plugins.reduce((sum, p) => sum + (p.hooks || []).length, 0);
@@ -862,7 +819,6 @@
                 const skills = plugin.skills || [];
                 const hooks = plugin.hooks || [];
                 const agents = plugin.agents || [];
-                const commandCount = plugin.commands.length;
                 const skillCount = skills.length;
                 const hookCount = hooks.length;
                 const agentCount = agents.length;
@@ -877,12 +833,6 @@
                     </div>
                     <div class="plugin-description">${plugin.description}</div>
                     <div class="item-counts">
-                        ${commandCount > 0 ? `
-                        <div class="item-count">
-                            <span class="item-count-badge">${commandCount}</span>
-                            <span>command${commandCount !== 1 ? 's' : ''}</span>
-                        </div>
-                        ` : ''}
                         ${skillCount > 0 ? `
                         <div class="item-count">
                             <span class="item-count-badge">${skillCount}</span>
@@ -914,7 +864,6 @@
             const skills = plugin.skills || [];
             const hooks = plugin.hooks || [];
             const agents = plugin.agents || [];
-            const commandCount = plugin.commands.length;
             const skillCount = skills.length;
             const hookCount = hooks.length;
             const agentCount = agents.length;
@@ -924,12 +873,6 @@
                 <div class="modal-title-section">
                     <div class="modal-title">${plugin.name}</div>
                     <div class="modal-meta">
-                        ${commandCount > 0 ? `
-                        <div class="item-count">
-                            <span class="item-count-badge">${commandCount}</span>
-                            <span>command${commandCount !== 1 ? 's' : ''}</span>
-                        </div>
-                        ` : ''}
                         ${skillCount > 0 ? `
                         <div class="item-count">
                             <span class="item-count-badge">${skillCount}</span>
@@ -985,19 +928,6 @@
                 </div>
             `;
 
-            if (commandCount > 0) {
-                content += `
-                    <div class="section-title">Commands</div>
-                    ${plugin.commands.map(cmd => `
-                        <div class="command-item">
-                            <div class="command-name">/${plugin.name}:${cmd.name}</div>
-                            ${cmd.synopsis ? `<div class="command-synopsis">${cmd.synopsis}</div>` : ''}
-                            ${cmd.description ? `<div class="command-description">${cmd.description}</div>` : ''}
-                        </div>
-                    `).join('')}
-                `;
-            }
-
             if (skillCount > 0) {
                 content += `
                     <div class="section-title">Skills</div>
@@ -1040,8 +970,8 @@
             if (plugin.has_mcp) {
                 content += `
                     <div class="section-title">MCP Configuration</div>
-                    <div class="command-item">
-                        <div class="command-description">This plugin includes MCP (Model Context Protocol) server configuration</div>
+                    <div class="skill-item">
+                        <div class="skill-description">This plugin includes MCP (Model Context Protocol) server configuration</div>
                     </div>
                 `;
             }
@@ -1063,7 +993,6 @@
             // Find matching items
             const results = {
                 plugins: [],
-                commands: [],
                 skills: []
             };
 
@@ -1073,18 +1002,6 @@
                     plugin.description.toLowerCase().includes(lowerQuery)) {
                     results.plugins.push(plugin);
                 }
-
-                // Check command matches
-                plugin.commands.forEach(cmd => {
-                    if (cmd.name.toLowerCase().includes(lowerQuery) ||
-                        (cmd.description && cmd.description.toLowerCase().includes(lowerQuery)) ||
-                        (cmd.synopsis && cmd.synopsis.toLowerCase().includes(lowerQuery))) {
-                        results.commands.push({
-                            plugin: plugin.name,
-                            command: cmd
-                        });
-                    }
-                });
 
                 // Check skill matches
                 const skills = plugin.skills || [];
@@ -1106,7 +1023,6 @@
             // Filter plugin cards
             const matchedPluginNames = new Set([
                 ...results.plugins.map(p => p.name),
-                ...results.commands.map(c => c.plugin),
                 ...results.skills.map(s => s.plugin)
             ]);
             const filtered = allPlugins.filter(p => matchedPluginNames.has(p.name));
@@ -1115,7 +1031,7 @@
 
         function updateAutocomplete(results) {
             const autocomplete = document.getElementById('autocomplete');
-            const hasResults = results.plugins.length > 0 || results.commands.length > 0 || results.skills.length > 0;
+            const hasResults = results.plugins.length > 0 || results.skills.length > 0;
 
             if (!hasResults) {
                 autocomplete.innerHTML = '<div class="autocomplete-empty">No matches found</div>';
@@ -1136,24 +1052,6 @@
                                 <div class="autocomplete-item-content">
                                     <div class="autocomplete-item-title">${plugin.name}</div>
                                     <div class="autocomplete-item-subtitle">${plugin.description}</div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }
-
-            // Commands section
-            if (results.commands.length > 0) {
-                html += `
-                    <div class="autocomplete-section">
-                        <div class="autocomplete-section-title">Commands</div>
-                        ${results.commands.slice(0, 10).map(item => `
-                            <div class="autocomplete-item" onclick="showPluginModal('${item.plugin}')">
-                                <div class="autocomplete-item-icon command">$</div>
-                                <div class="autocomplete-item-content">
-                                    <div class="autocomplete-item-title">/${item.plugin}:${item.command.name}</div>
-                                    <div class="autocomplete-item-subtitle">${item.command.description || item.command.synopsis || ''}</div>
                                 </div>
                             </div>
                         `).join('')}
@@ -1284,7 +1182,7 @@
                 <div class="code-block">/plugin install code-reviewer-profiles@ben-dev</div>
 
                 <p style="margin: 1.5rem 0 1rem; color: var(--text-secondary);">
-                    Use a command from the plugin:
+                    Use a skill from the plugin:
                 </p>
 
                 <div class="code-block">/code-reviewer-profiles:review-as-ben</div>

@@ -1,0 +1,8 @@
+{
+  "name": "dev-workflow",
+  "description": "Everyday development workflow skills: TDD bug solving, PR creation and feedback, and Jira ticket management",
+  "version": "0.1.0",
+  "author": {
+    "name": "bgaudiosi"
+  }
+}

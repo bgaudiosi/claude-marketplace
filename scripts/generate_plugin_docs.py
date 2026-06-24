@@ -2,8 +2,8 @@
 """
 Generate plugin documentation by scanning all plugins in the repository.
 
-This script scans the plugins directory, reads plugin metadata and command files,
-and generates a markdown documentation section listing all available plugins and commands.
+This script scans the plugins directory, reads plugin metadata and skill files,
+and generates a markdown documentation section listing all available plugins and skills.
 """
 
 import json
@@ -21,14 +21,13 @@ class PluginInfo:
         self.name = name
         self.description = description
         self.version = version
-        self.commands = []
-    
-    def add_command(self, command_name: str, description: str, argument_hint: str = ""):
-        """Add a command to this plugin."""
-        self.commands.append({
-            'name': command_name,
-            'description': description,
-            'argument_hint': argument_hint
+        self.skills = []
+
+    def add_skill(self, skill_name: str, description: str):
+        """Add a skill to this plugin."""
+        self.skills.append({
+            'name': skill_name,
+            'description': description
         })
 
 
@@ -61,31 +60,30 @@ def get_plugin_info(plugin_dir: Path) -> PluginInfo:
     
     with open(plugin_json_path, 'r') as f:
         plugin_data = json.load(f)
-    
+
     plugin_info = PluginInfo(
         name=plugin_data.get('name', plugin_dir.name),
         description=plugin_data.get('description', ''),
         version=plugin_data.get('version', '0.0.0')
     )
-    
-    # Scan commands
-    commands_dir = plugin_dir / 'commands'
-    if commands_dir.exists():
-        command_files = sorted(commands_dir.glob('*.md'))
-        
-        for command_file in command_files:
-            with open(command_file, 'r') as f:
+
+    # Scan skills
+    skills_dir = plugin_dir / 'skills'
+    if skills_dir.exists():
+        skill_files = sorted(skills_dir.glob('*/SKILL.md'))
+
+        for skill_file in skill_files:
+            with open(skill_file, 'r') as f:
                 content = f.read()
-            
+
             frontmatter = parse_frontmatter(content)
-            command_name = command_file.stem
-            
-            plugin_info.add_command(
-                command_name=command_name,
-                description=frontmatter.get('description', ''),
-                argument_hint=frontmatter.get('argument-hint', '')
+            skill_name = frontmatter.get('name', skill_file.parent.name)
+
+            plugin_info.add_skill(
+                skill_name=skill_name,
+                description=frontmatter.get('description', '')
             )
-    
+
     return plugin_info
 
 
@@ -100,14 +98,14 @@ def generate_plugin_docs(plugins_dir: Path) -> str:
             continue
         
         plugin_info = get_plugin_info(plugin_dir)
-        if plugin_info and plugin_info.commands:
+        if plugin_info and plugin_info.skills:
             plugins.append(plugin_info)
     
     # Generate markdown
     lines = []
     lines.append("# Available Plugins")
     lines.append("")
-    lines.append("This document lists all available Claude Code plugins and their commands in the ai-helpers repository.")
+    lines.append("This document lists all available Claude Code plugins and their skills in this repository.")
     lines.append("")
 
     # Generate table of contents
@@ -127,16 +125,13 @@ def generate_plugin_docs(plugins_dir: Path) -> str:
             lines.append(plugin.description)
             lines.append("")
         
-        # Commands list
-        if plugin.commands:
-            lines.append("**Commands:**")
-            for cmd in plugin.commands:
-                cmd_signature = f"`/{plugin.name}:{cmd['name']}`"
-                if cmd['argument_hint']:
-                    cmd_signature += f" `{cmd['argument_hint']}`"
-                lines.append(f"- **{cmd_signature}** - {cmd['description']}")
+        # Skills list
+        if plugin.skills:
+            lines.append("**Skills:**")
+            for skill in plugin.skills:
+                lines.append(f"- **`/{skill['name']}`** - {skill['description']}")
             lines.append("")
-        
+
         # Link to plugin README if it exists
         readme_path = plugins_dir / plugin.name / 'README.md'
         if readme_path.exists():

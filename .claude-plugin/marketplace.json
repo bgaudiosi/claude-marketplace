@@ -8,6 +8,11 @@
       "name": "code-reviewer-profiles",
       "source": "./plugins/code-reviewer-profiles",
       "description": "Learn and apply code review styles from GitHub history"
+    },
+    {
+      "name": "dev-workflow",
+      "source": "./plugins/dev-workflow",
+      "description": "Everyday development workflow skills: TDD bug solving, PR creation and feedback, and Jira ticket management"
     }
   ]
 }
