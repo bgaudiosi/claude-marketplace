@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Build website data for ai-helpers GitHub Pages
-Extracts plugin and command information from the repository
+Build website data for GitHub Pages
+Extracts plugin and skill information from the repository
 """
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import Dict, List
 
@@ -22,39 +21,6 @@ def parse_frontmatter(content: str) -> Dict[str, str]:
                     key, value = line.split(':', 1)
                     frontmatter[key.strip()] = value.strip()
     return frontmatter
-
-def extract_synopsis(content: str) -> str:
-    """Extract synopsis from command markdown"""
-    match = re.search(r'## Synopsis\s*```\s*([^\n]+)', content, re.MULTILINE)
-    if match:
-        return match.group(1).strip()
-    return ""
-
-def get_plugin_commands(plugin_path: Path) -> List[Dict[str, str]]:
-    """Get all commands for a plugin"""
-    commands = []
-    commands_dir = plugin_path / "commands"
-
-    if not commands_dir.exists():
-        return commands
-
-    for cmd_file in sorted(commands_dir.glob("*.md")):
-        try:
-            content = cmd_file.read_text()
-            frontmatter = parse_frontmatter(content)
-            synopsis = extract_synopsis(content)
-
-            command_name = cmd_file.stem
-            commands.append({
-                "name": command_name,
-                "description": frontmatter.get("description", ""),
-                "synopsis": synopsis,
-                "argument_hint": frontmatter.get("argument-hint", "")
-            })
-        except Exception as e:
-            print(f"Error processing {cmd_file}: {e}")
-
-    return commands
 
 def get_plugin_skills(plugin_path: Path) -> List[Dict[str, str]]:
     """Get all skills for a plugin"""
@@ -166,8 +132,7 @@ def build_website_data():
             with open(plugin_json_path) as f:
                 plugin_metadata = json.load(f)
 
-        # Get commands, skills, hooks, and agents
-        commands = get_plugin_commands(plugin_path)
+        # Get skills, hooks, and agents
         skills = get_plugin_skills(plugin_path)
         hooks = get_plugin_hooks(plugin_path)
         agents = get_plugin_agents(plugin_path)
@@ -182,7 +147,6 @@ def build_website_data():
             "name": plugin_info["name"],
             "description": plugin_info["description"],
             "version": plugin_metadata.get("version", "unknown"),
-            "commands": commands,
             "skills": skills,
             "hooks": hooks,
             "agents": agents,
@@ -206,8 +170,6 @@ if __name__ == "__main__":
 
     print(f"Website data written to {output_file}")
     print(f"Total plugins: {len(data['plugins'])}")
-    total_commands = sum(len(p['commands']) for p in data['plugins'])
-    print(f"Total commands: {total_commands}")
     total_skills = sum(len(p['skills']) for p in data['plugins'])
     print(f"Total skills: {total_skills}")
     total_hooks = sum(len(p['hooks']) for p in data['plugins'])

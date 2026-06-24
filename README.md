@@ -19,6 +19,7 @@ Install a specific plugin:
 ## Plugins
 
 - **code-reviewer-profiles**: Learn and apply code review styles from GitHub history
+- **dev-workflow**: Everyday development workflow skills — TDD bug solving, PR creation and feedback, and Jira ticket management
 
 ## Development
 

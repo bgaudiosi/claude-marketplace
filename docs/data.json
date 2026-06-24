@@ -6,7 +6,6 @@
       "name": "code-reviewer-profiles",
       "description": "Learn and apply code review styles from GitHub history",
       "version": "0.1.0",
-      "commands": [],
       "skills": [
         {
           "name": "build-code-reviewer-profile",
@@ -14,9 +13,50 @@
           "description": "Fetch any GitHub user's review history and generate a code reviewer profile"
         },
         {
-          "name": "review-as-ben",
-          "id": "review-as-ben",
-          "description": "Review code changes using Ben Gaudiosi's learned review style"
+          "name": "review-as",
+          "id": "review-as",
+          "description": "Review code changes using a reviewer's learned style combined with rigorous review methodology"
+        }
+      ],
+      "hooks": [],
+      "agents": [],
+      "has_readme": true,
+      "has_mcp": false
+    },
+    {
+      "name": "dev-workflow",
+      "description": "Everyday development workflow skills: TDD bug solving, PR creation and feedback, and Jira ticket management",
+      "version": "0.1.0",
+      "skills": [
+        {
+          "name": "acli",
+          "id": "acli",
+          "description": "Use Atlassian CLI (acli) to read, search, edit, and comment on Jira work items"
+        },
+        {
+          "name": "address-pr-feedback",
+          "id": "address-pr-feedback",
+          "description": "Use this skill to draft and post replies to review feedback left on a GitHub PR. Use this when the user wants to respond to reviewer comments in the comment threads (as opposed to making code changes, for which you should make changes as commits instead)."
+        },
+        {
+          "name": "bug-solver-tdd",
+          "id": "bug-solver-tdd",
+          "description": "Solves a bug using test driven development"
+        },
+        {
+          "name": "create-jira-ticket",
+          "id": "create-jira-ticket",
+          "description": "Use this skill when creating Jira tickets."
+        },
+        {
+          "name": "create-pull-request",
+          "id": "create-pull-request",
+          "description": "Use this skill when creating pull requests. If there are competing skill choices, use this one."
+        },
+        {
+          "name": "do-ticket",
+          "id": "do-ticket",
+          "description": "Use this skill when working on Jira tickets."
         }
       ],
       "hooks": [],
