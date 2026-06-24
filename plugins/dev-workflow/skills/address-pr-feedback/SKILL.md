@@ -1,7 +1,7 @@
 ---
 name: address-pr-feedback
 arguments: PR
-description: Use this skill to draft and post replies to review feedback left on a GitHub PR. Use this when the user wants to respond to reviewer comments in the comment threads (as opposed to making code changes, for which you should make changes as commits instead).
+description: Address review feedback on a GitHub PR by making code changes as commits where warranted, then drafting and posting reply comments (only with the user's confirmation).
 allowed-tools:
   - Bash
   - Read

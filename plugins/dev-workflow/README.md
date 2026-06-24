@@ -11,7 +11,7 @@ Solve a bug using test-driven development. Validates a theory logically, then wr
 Create a draft pull request for the current branch. Uses the repo's PR template, pushes the latest commit first, branches off the default branch if you're on it, and keeps descriptions succinct. Picks up ticket context from the branch name prefix (e.g. `PROJ-123-...`) when present.
 
 ### `/address-pr-feedback <PR>`
-Draft and post **replies** to reviewer comments on a GitHub PR, one response per thread, always after confirmation. (For making code *changes* in response to review, use a code-change skill instead.)
+Address reviewer feedback on a GitHub PR: make code changes as commits where warranted, then draft and post reply comments — one per thread, always after confirmation.
 
 ### `/acli`
 Reference for the Atlassian CLI (`acli`) — view, search, edit, comment on, and create Jira work items, including writing formatted descriptions via Atlassian Document Format (ADF).

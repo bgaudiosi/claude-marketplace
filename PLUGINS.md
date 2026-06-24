@@ -21,7 +21,7 @@ Everyday development workflow skills: TDD bug solving, PR creation and feedback,
 
 **Skills:**
 - **`/acli`** - Use Atlassian CLI (acli) to read, search, edit, and comment on Jira work items
-- **`/address-pr-feedback`** - Use this skill to draft and post replies to review feedback left on a GitHub PR. Use this when the user wants to respond to reviewer comments in the comment threads (as opposed to making code changes, for which you should make changes as commits instead).
+- **`/address-pr-feedback`** - Address review feedback on a GitHub PR by making code changes as commits where warranted, then drafting and posting reply comments (only with the user's confirmation).
 - **`/bug-solver-tdd`** - Solves a bug using test driven development
 - **`/create-jira-ticket`** - Use this skill when creating Jira tickets.
 - **`/create-pull-request`** - Use this skill when creating pull requests. If there are competing skill choices, use this one.
